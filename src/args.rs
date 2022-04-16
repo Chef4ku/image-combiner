@@ -1,3 +1,4 @@
+// Get input and return it
 fn get_nth_arg(n: usize) -> String {
     std::env::args().nth(n).unwrap()
 }
@@ -9,6 +10,7 @@ pub struct Args {
     pub output: String,
 }
 
+// puts the inputs in the strings
 impl Args {
     pub fn new() -> Self {
         Args {
