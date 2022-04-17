@@ -19,7 +19,8 @@ fn main() -> Result<(), ImageDataErrors> {
     if image_format1 != image_format2 {
         return Err(ImageDataErrors::DifferentImageFormats);
     }
-    resize_img_size(image1, image2);
+
+    let (image1, image2) = resize_img_size(image1, image2);
     Ok(())
 }
 
