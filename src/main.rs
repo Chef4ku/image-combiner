@@ -1,14 +1,19 @@
 mod args;
 use args::Args;
 use image::{
-    imageops::FilterType::Triangle, io::Reader, DynamicImage, GenericImageView, ImageFormat,
+    imageops::FilterType::Triangle, io::Reader, DynamicImage, GenericImageView, ImageError,
+    ImageFormat,
 };
-use std::{convert::TryInto, fs::File, io::BufReader};
+use std::convert::TryInto;
 
 #[derive(Debug)]
 enum ImageDataErrors {
     DifferentImageFormats,
     BufferTooSmall,
+    UnableToReadImageFromPath(std::io::Error),
+    UnableToFormatImage(String),
+    UnableToDecodeImage(ImageError),
+    UnableToSaveImage(ImageError),
 }
 
 struct FloatingImage {
@@ -43,39 +48,57 @@ impl FloatingImage {
 fn main() -> Result<(), ImageDataErrors> {
     let args = Args::new();
 
-    let (image1, image_format1) = find_img(args.img1);
-    let (image2, image_format2) = find_img(args.img2);
+    println!("Searching...");
+    let (image1, image_format1) = find_img(args.img1)?;
+    let (image2, image_format2) = find_img(args.img2)?;
 
     if image_format1 != image_format2 {
         return Err(ImageDataErrors::DifferentImageFormats);
     }
 
+    println!("Resizing...");
     let (image1, image2) = resize_img_size(image1, image2);
     let mut output = FloatingImage::new(image1.width(), image1.height(), args.output);
 
+    println!("Mixing...");
     let combined_data = combine_img(image1, image2);
     output.set_data(combined_data)?;
-
-    image::save_buffer_with_format(
+    
+    println!("Saving...");
+    if let Err(e) = image::save_buffer_with_format(
         output.name,
         &output.data,
         output.width,
         output.height,
         image::ColorType::Rgba8,
         image_format1,
-    )
-    .unwrap();
-    Ok(())
+    ) {
+        Err(ImageDataErrors::UnableToSaveImage(e))
+    } else {
+        println!("Done!");
+        Ok(())
+    }
 }
 
 // open img with the given path, get the format and decode it
 // return the decoded img and the format
-fn find_img(path: String) -> (DynamicImage, ImageFormat) {
-    let image_reader: Reader<BufReader<File>> = Reader::open(path).unwrap();
-    let image_format: ImageFormat = image_reader.format().unwrap();
-    let image: DynamicImage = image_reader.decode().unwrap();
-
-    (image, image_format)
+fn find_img(path: String) -> Result<(DynamicImage, ImageFormat), ImageDataErrors> {
+    // let image_reader: Reader<BufReader<File>> = Reader::open(path).unwrap();
+    // let image_format: ImageFormat = image_reader.format().unwrap();
+    // let image: DynamicImage = image_reader.decode().unwrap();
+    match Reader::open(&path) {
+        Ok(image_reader) => {
+            if let Some(image_format) = image_reader.format() {
+                match image_reader.decode() {
+                    Ok(image) => Ok((image, image_format)),
+                    Err(e) => Err(ImageDataErrors::UnableToDecodeImage(e)),
+                }
+            } else {
+                return Err(ImageDataErrors::UnableToFormatImage(path));
+            }
+        }
+        Err(e) => Err(ImageDataErrors::UnableToReadImageFromPath(e)),
+    }
 }
 
 fn get_smallest_img(res1: (u32, u32), res2: (u32, u32)) -> (u32, u32) {
@@ -88,7 +111,7 @@ fn get_smallest_img(res1: (u32, u32), res2: (u32, u32)) -> (u32, u32) {
 fn resize_img_size(img1: DynamicImage, img2: DynamicImage) -> (DynamicImage, DynamicImage) {
     let (width, height) = get_smallest_img(img1.dimensions(), img2.dimensions());
     //debug
-    println!("Width: {}\nheight: {}\n", width, height);
+    println!("Width: {}\nheight: {}", width, height);
 
     if img2.dimensions() == (width, height) {
         (img1.resize_exact(width, height, Triangle), img2)
